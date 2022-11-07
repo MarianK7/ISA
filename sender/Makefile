@@ -2,7 +2,7 @@ CC=gcc
 CFLAGS= -std=gnu99 -Wall -Wextra -Werror -pedantic -pthread
 BIN=sender
 SOURCE=dns_sender.c
-PARAMS=-u banan
+PARAMS=-u 127.0.0.1 example.com data.txt 
 
 all:
 	$(CC) $(CFLAGS) $(SOURCE) -o $(BIN)
