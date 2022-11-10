@@ -1,5 +1,5 @@
 CC=gcc
-CFLAGS= -std=gnu99 -Wall -Wextra -Werror -pedantic -pthread
+CFLAGS= -std=gnu99 -Wall -Wextra -pedantic -pthread
 BIN=sender
 BIN2=reciever
 SOURCE=dns_sender.c
