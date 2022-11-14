@@ -13,6 +13,7 @@
 #include <stdbool.h>
 #include <unistd.h>
 #include "dns_sender_events.h"
+#include "dns_sender_events.c"
 #include "../base32.h"
 #include "../base32.c"
 #include "../dns_packet.h"
@@ -21,9 +22,8 @@
 #define DATA 30
 #define PORT 53 // port number
 
-packet create_packet(char *base_host)
+packet create_packet(unsigned char *base_host)
 {
-    // base_host[0] = 9;
     packet packet;
     packet.header.id = (unsigned short)htons(getpid());
     packet.header.qr = 0;
@@ -45,9 +45,8 @@ packet create_packet(char *base_host)
     return packet;
 }
 
-packet create_custom_packet(char *base_host, unsigned short id)
+packet create_custom_packet(unsigned char *base_host, unsigned short id)
 {
-    // base_host[0] = 9;
     packet p;
     p.header.id = (unsigned short)htons(id);
     p.header.qr = 0;
@@ -74,7 +73,7 @@ void ChangetoDnsNameFormat(unsigned char *dns, unsigned char *host)
     int lock = 0, i;
     strcat((char *)host, ".");
 
-    for (i = 0; i < strlen((char *)host); i++)
+    for (i = 0; i < (int)strlen((char *)host); i++)
     {
         if (host[i] == '.')
         {
@@ -94,7 +93,7 @@ int main(int argc, char **argv)
     struct sockaddr_in server, cliaddr; // address structures of the server and the client
     int sockfd;
     int msg_size = 0, i;
-    socklen_t len, cliaddrLen;
+    socklen_t len;
     char buffer[BUFFER] = {0};
     char data[256] = {0};
 
@@ -166,20 +165,20 @@ int main(int argc, char **argv)
 
     // change the base host to DNS format
     char path_dnsFormat[256] = {0};
-    char formatedFirst[256] = {0};
+    char pathPrint[256] = {0};
     int sizeofpacket;
     char formated_encoded[256];
     // send filepath to the receiver
     strcat(path_dnsFormat, DST_Filepath); // copy the filepath to the path_dnsFormat becouse bad things are happening
+    strcat(pathPrint, DST_Filepath);
     base32_encode((unsigned char *)path_dnsFormat, strlen(path_dnsFormat), (unsigned char *)formated_encoded);
-    for (int i = 0; i < strlen(formated_encoded); i++)
+    for (int i = 0; i < (int)strlen(formated_encoded); i++)
     {
         if (formated_encoded[i] != '=' && (formated_encoded[i] < 'A' || formated_encoded[i] > 'Z') && (formated_encoded[i] < '2' || formated_encoded[i] > '7'))
         {
             formated_encoded[i] = '\0';
         }
     }
-    memset(path_dnsFormat, 0, 256);
     strcat(formated_encoded, ".");
     strcat(formated_encoded, Base_Host);
     ChangetoDnsNameFormat((unsigned char *)path_dnsFormat, (unsigned char *)formated_encoded);
@@ -199,15 +198,13 @@ int main(int argc, char **argv)
         perror("socket creation failed");
         exit(EXIT_FAILURE);
     }
-    printf("* Server socket created %i\n", sockfd);
-
+    
     memset(&server, 0, sizeof(server));
     server.sin_family = AF_INET;
     server.sin_port = htons(PORT);
     server.sin_addr.s_addr = inet_addr(DNS_Server);
 
     len = sizeof(server);
-    cliaddrLen = sizeof(cliaddr);
 
     if (input == true)
     {
@@ -223,28 +220,25 @@ int main(int argc, char **argv)
         fp = stdin;
     }
 
-    packet p = create_custom_packet(path_dnsFormat, 10);                                                           // create the packet
+    packet p = create_custom_packet((unsigned char *)path_dnsFormat, 10);                                                           // create the packet
     memcpy(buffer, &p, sizeof(p.header));                                                                          // copy the packet to the buffer
-    memcpy(buffer + sizeof(p.header), p.question.qname, strlen(p.question.qname) + 1);                             // copy the question to the buffer
-    memcpy(buffer + sizeof(p.header) + strlen(p.question.qname) + 1, &p.question.qdaco, sizeof(p.question.qdaco)); // copy the question to the buffer
-    sizeofpacket = sizeof(p.header) + strlen(p.question.qname) + 1 + sizeof(p.question.qdaco);                     // calculate the size of the packet
-    printf("id: %i \n", p.header.id);
-
-    printf("* Sending message to server\n");
+    memcpy(buffer + sizeof(p.header), p.question.qname, strlen((const char *)p.question.qname) + 1);                             // copy the question to the buffer
+    memcpy(buffer + sizeof(p.header) + strlen((const char *)p.question.qname) + 1, &p.question.qdaco, sizeof(p.question.qdaco)); // copy the question to the buffer
+    sizeofpacket = sizeof(p.header) + strlen((const char *)p.question.qname) + 1 + sizeof(p.question.qdaco);                     // calculate the size of the packet
+    
     i = sendto(sockfd, buffer, sizeofpacket, MSG_CONFIRM, (const struct sockaddr *)&server, len); // send data to the server
-    printf("* Data sent from %s, port %d (%d) to %s, port %d (%d)\n", inet_ntoa(cliaddr.sin_addr), ntohs(cliaddr.sin_port), cliaddr.sin_port, inet_ntoa(server.sin_addr), ntohs(server.sin_port), server.sin_port);
-
+    dns_sender__on_transfer_init(&(server.sin_addr));
+    
     // read the answer from the server
     i = recvfrom(sockfd, (char *)buffer, BUFFER, MSG_WAITALL, (struct sockaddr *)&cliaddr, &len);
     buffer[i] = '\0';
-    printf("Answer: %s\n", buffer);
     memset(buffer, 0, 1024);
 
-    printf("* UDP packet received from %s, port %d\n", inet_ntoa(cliaddr.sin_addr), ntohs(cliaddr.sin_port));
-
+    
     char encoded[256];
     char formated[256];
     packet packet;
+    int chunkID = 0;
 
     while ((msg_size = fread(data, 1, DATA, fp)) != 0)
     // read input data from STDIN (console) until end-of-line (Enter) is pressed
@@ -252,7 +246,7 @@ int main(int argc, char **argv)
     {
 
         base32_encode((unsigned char *)data, msg_size, (unsigned char *)encoded);
-        for (int i = 0; i < strlen(encoded); i++)
+        for (int i = 0; i < (int)strlen(encoded); i++)
         {
             if (encoded[i] != '=' && (encoded[i] < 'A' || encoded[i] > 'Z') && (encoded[i] < '2' || encoded[i] > '7'))
             {
@@ -260,42 +254,38 @@ int main(int argc, char **argv)
             }
         }
         memset(data, 0, 256);
-        // printf("Data encoded: %s \n", encoded);
         strcat(encoded, ".");
-        // printf("Data encoded + dot: %s \n", encoded);
-        // printf("Lenghth encoded: %li \n", strlen(encoded));
         strcat(encoded, Base_Host);
-        printf("Data encoded + basehost: %s \n", encoded);
+        dns_sender__on_chunk_encoded(pathPrint, chunkID, encoded);
         ChangetoDnsNameFormat((unsigned char *)formated, (unsigned char *)encoded);
         memset(encoded, 0, 256);
 
-        packet = create_packet(formated);
+        packet = create_packet((unsigned char *)formated);
         memcpy(buffer, &packet, sizeof(packet.header));                                                                                    // copy the packet to the buffer
-        memcpy(buffer + sizeof(packet.header), packet.question.qname, strlen(packet.question.qname) + 1);                                  // copy the question to the buffer
-        memcpy(buffer + sizeof(packet.header) + strlen(packet.question.qname) + 1, &packet.question.qdaco, sizeof(packet.question.qdaco)); // copy the question to the buffer
-        sizeofpacket = sizeof(packet.header) + strlen(packet.question.qname) + 1 + sizeof(packet.question.qdaco);
+        memcpy(buffer + sizeof(packet.header), packet.question.qname, strlen((const char *)packet.question.qname) + 1);                                  // copy the question to the buffer
+        memcpy(buffer + sizeof(packet.header) + strlen((const char *)packet.question.qname) + 1, &packet.question.qdaco, sizeof(packet.question.qdaco)); // copy the question to the buffer
+        sizeofpacket = sizeof(packet.header) + strlen((const char *)packet.question.qname) + 1 + sizeof(packet.question.qdaco);
 
-        printf("* Sending message to server\n");
         i = sendto(sockfd, buffer, sizeofpacket, MSG_CONFIRM, (const struct sockaddr *)&server, len); // send data to the server
-        printf("* Data sent from %s, port %d (%d) to %s, port %d (%d)\n", inet_ntoa(cliaddr.sin_addr), ntohs(cliaddr.sin_port), cliaddr.sin_port, inet_ntoa(server.sin_addr), ntohs(server.sin_port), server.sin_port);
+        dns_sender__on_chunk_sent(&(server.sin_addr), pathPrint, chunkID, msg_size);
         memset(buffer, 0, 1024);
         memset(formated, 0, 256);
+        chunkID++;
 
         // read the answer from the server
         i = recvfrom(sockfd, (char *)buffer, BUFFER, MSG_WAITALL, (struct sockaddr *)&cliaddr, &len);
         buffer[i] = '\0';
-        printf("Answer: %s\n", buffer);
         memset(buffer, 0, 1024);
         memset(formated, 0, 256);
 
-        printf("* UDP packet received from %s, port %d\n", inet_ntoa(cliaddr.sin_addr), ntohs(cliaddr.sin_port));
     }
-    char formatedBaseHost[256];
+
     memset(data, 0, 256);
     memset(encoded, 0, 256);
     strcat(data, "Finished");
     base32_encode((unsigned char *)data, strlen(data), (unsigned char *)encoded);
-    for (int i = 0; i < strlen(encoded); i++)
+
+    for (int i = 0; i < (int)strlen(encoded); i++)
     {
         if (encoded[i] != '=' && (encoded[i] < 'A' || encoded[i] > 'Z') && (encoded[i] < '2' || encoded[i] > '7'))
         {
@@ -303,31 +293,28 @@ int main(int argc, char **argv)
         }
     }
     memset(data, 0, 256);
-    // printf("Data encoded: %s \n", encoded);
     strcat(encoded, ".");
-    // printf("Data encoded + dot: %s \n", encoded);
-    // printf("Lenghth encoded: %li \n", strlen(encoded));
     strcat(encoded, Base_Host);
-    printf("Data encoded + basehost: %s \n", encoded);
     ChangetoDnsNameFormat((unsigned char *)formated, (unsigned char *)encoded);
     memset(encoded, 0, 256);
 
-    packet = create_custom_packet(formated, 20);
+    packet = create_custom_packet((unsigned char *)formated, 20);
     memcpy(buffer, &packet, sizeof(packet.header));                                                                                    // copy the packet to the buffer
-    memcpy(buffer + sizeof(packet.header), packet.question.qname, strlen(packet.question.qname) + 1);                                  // copy the question to the buffer
-    memcpy(buffer + sizeof(packet.header) + strlen(packet.question.qname) + 1, &packet.question.qdaco, sizeof(packet.question.qdaco)); // copy the question to the buffer
-    sizeofpacket = sizeof(packet.header) + strlen(packet.question.qname) + 1 + sizeof(packet.question.qdaco);
+    memcpy(buffer + sizeof(packet.header), packet.question.qname, strlen((const char *)packet.question.qname) + 1);                                  // copy the question to the buffer
+    memcpy(buffer + sizeof(packet.header) + strlen((const char *)packet.question.qname) + 1, &packet.question.qdaco, sizeof(packet.question.qdaco)); // copy the question to the buffer
+    sizeofpacket = sizeof(packet.header) + strlen((const char *)packet.question.qname) + 1 + sizeof(packet.question.qdaco);
 
-    printf("* Sending final message to server\n");
     i = sendto(sockfd, buffer, sizeofpacket, MSG_CONFIRM, (const struct sockaddr *)&server, len); // send data to the server
-    printf("* Data sent from %s, port %d (%d) to %s, port %d (%d)\n", inet_ntoa(cliaddr.sin_addr), ntohs(cliaddr.sin_port), cliaddr.sin_port, inet_ntoa(server.sin_addr), ntohs(server.sin_port), server.sin_port);
     memset(buffer, 0, 1024);
     memset(formated, 0, 256);
 
+    fseek(fp, 0L, SEEK_END);
+    int res = ftell(fp);
+
     // read the answer from the server
     i = recvfrom(sockfd, (char *)buffer, BUFFER, MSG_WAITALL, (struct sockaddr *)&cliaddr, &len);
+    dns_sender__on_transfer_completed(pathPrint, res);
     buffer[i] = '\0';
-    printf("Answer: %s\n", buffer);
     memset(buffer, 0, 1024);
     memset(formated, 0, 256);
 
