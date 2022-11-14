@@ -4,8 +4,8 @@ BIN=sender
 BIN2=reciever
 SOURCE=dns_sender.c
 SOURCE2=dns_reciever.c
-PARAMS=-u 127.0.0.1 example.com data.txt 
-PARAMS2=name destination.txt
+PARAMS=-u 127.0.0.1 example.com data.txt ./data.txt 
+PARAMS2=example.com /desktop
 
 all:
 	cd sender && $(CC) $(CFLAGS) -o $(BIN) $(SOURCE)
@@ -16,7 +16,7 @@ clean:
 	cd receiver && rm $(BIN2)
 
 run:
-	cd sender && ./$(BIN) $(PARAMS)
+	cd sender && sudo ./$(BIN) $(PARAMS)
 
 run2:
-	cd receiver && ./$(BIN2) $(PARAMS2)
+	cd receiver && sudo ./$(BIN2) $(PARAMS2)
