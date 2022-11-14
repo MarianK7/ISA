@@ -143,7 +143,7 @@ int main(int argc, char **argv)
         exit(EXIT_FAILURE);
     }
 
-    int n, r;
+    int n;
 
     length = sizeof(cliaddr);
 
@@ -194,14 +194,14 @@ int main(int argc, char **argv)
                     return 1;
                 }
 
-                dns_receiver__on_transfer_init(&(servaddr.sin_addr));
+                dns_receiver__on_transfer_init(&(cliaddr.sin_addr));
 
                 memcpy(respond, &p, sizeof(p.header));                                                                          // copy the packet to the buffer
                 memcpy(respond + sizeof(p.header), p.question.qname, strlen((const char *)p.question.qname) + 1);                             // copy the question to the buffer
                 memcpy(respond + sizeof(p.header) + strlen((const char *)p.question.qname) + 1, &p.question.qdaco, sizeof(p.question.qdaco)); // copy the question to the buffer
                 sizeofpacket = sizeof(p.header) + strlen((const char *)p.question.qname) + 1 + sizeof(p.question.qdaco);                      // calculate the size of the packet
 
-                r = sendto(sockfd, respond, sizeofpacket, 0, (struct sockaddr *)&cliaddr, length); // send the answer
+                sendto(sockfd, respond, sizeofpacket, 0, (struct sockaddr *)&cliaddr, length); // send the answer
 
                 continue;
             }
@@ -209,7 +209,7 @@ int main(int argc, char **argv)
             {
                 fseek(fp, 0L, SEEK_END);
                 res = ftell(fp);
-                dns_receiver__on_transfer_completed(inet_ntoa(servaddr.sin_addr), (int)res);
+                dns_receiver__on_transfer_completed(finalPath, (int)res);
                 fclose(fp);
                 run = false;
 
@@ -219,7 +219,7 @@ int main(int argc, char **argv)
                 memcpy(respond + sizeof(p.header) + strlen((const char *)p.question.qname) + 1, &p.question.qdaco, sizeof(p.question.qdaco)); // copy the question to the buffer
                 sizeofpacket = sizeof(p.header) + strlen((const char *)p.question.qname) + 1 + sizeof(p.question.qdaco);                      // calculate the size of the packet
 
-                r = sendto(sockfd, respond, sizeofpacket, 0, (struct sockaddr *)&cliaddr, length); // send the answer
+                sendto(sockfd, respond, sizeofpacket, 0, (struct sockaddr *)&cliaddr, length); // send the answer
 
                 continue;
             }
@@ -246,7 +246,7 @@ int main(int argc, char **argv)
                 memcpy(respond + sizeof(p.header) + strlen((const char *)p.question.qname) + 1, &p.question.qdaco, sizeof(p.question.qdaco)); // copy the question to the buffer
                 sizeofpacket = sizeof(p.header) + strlen((const char *)p.question.qname) + 1 + sizeof(p.question.qdaco);                      // calculate the size of the packet
 
-                r = sendto(sockfd, respond, sizeofpacket, 0, (struct sockaddr *)&cliaddr, length); // send the answer
+                sendto(sockfd, respond, sizeofpacket, 0, (struct sockaddr *)&cliaddr, length); // send the answer
 
                 continue;
             }

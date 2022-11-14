@@ -88,6 +88,18 @@ void ChangetoDnsNameFormat(unsigned char *dns, unsigned char *host)
     *dns++ = '\0';
 }
 
+int isValidIpAddress(char *ipAddress)
+{
+    struct sockaddr_in sa;
+    int result = inet_pton(AF_INET, ipAddress, &(sa.sin_addr));
+    
+    if (result == 0)
+    {
+        return 1;
+    }
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     struct sockaddr_in server, cliaddr; // address structures of the server and the client
@@ -96,6 +108,7 @@ int main(int argc, char **argv)
     socklen_t len;
     char buffer[BUFFER] = {0};
     char data[256] = {0};
+    int control;
 
     char *DNS_Server;
     bool ns = false;    // control variable if the nameserver was set by parameter or not
@@ -135,6 +148,11 @@ int main(int argc, char **argv)
             {
                 ns = true;
                 DNS_Server = argv[2];
+                if ((control = isValidIpAddress(DNS_Server)) == 1)
+                {
+                    printf("\nInvalid IP address\n");
+                    return 1;
+                }
                 Base_Host = argv[3];
                 DST_Filepath = argv[4];
             }
@@ -151,6 +169,11 @@ int main(int argc, char **argv)
                 ns = true;
                 input = true;
                 DNS_Server = argv[2];
+                if ((control = isValidIpAddress(DNS_Server)) == 1)
+                {
+                    printf("\nInvalid IP address\n");
+                    return 1;
+                }
                 Base_Host = argv[3];
                 DST_Filepath = argv[4];
                 SRC_Filepath = argv[5];
