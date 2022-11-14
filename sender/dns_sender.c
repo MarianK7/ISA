@@ -93,7 +93,7 @@ int main(int argc, char **argv)
 {
     struct sockaddr_in server, cliaddr; // address structures of the server and the client
     int sockfd;
-    int msg_size, i;
+    int msg_size = 0, i;
     socklen_t len, cliaddrLen;
     char buffer[BUFFER] = {0};
     char data[256] = {0};
@@ -246,12 +246,12 @@ int main(int argc, char **argv)
     char formated[256];
     packet packet;
 
-    while (fread(data, 1, DATA, fp) != 0)
+    while ((msg_size = fread(data, 1, DATA, fp)) != 0)
     // read input data from STDIN (console) until end-of-line (Enter) is pressed
     // when end-of-file (CTRL-D) is received, n == 0
     {
 
-        base32_encode((unsigned char *)data, strlen(data), (unsigned char *)encoded);
+        base32_encode((unsigned char *)data, msg_size, (unsigned char *)encoded);
         for (int i = 0; i < strlen(encoded); i++)
         {
             if (encoded[i] != '=' && (encoded[i] < 'A' || encoded[i] > 'Z') && (encoded[i] < '2' || encoded[i] > '7'))
@@ -268,12 +268,6 @@ int main(int argc, char **argv)
         printf("Data encoded + basehost: %s \n", encoded);
         ChangetoDnsNameFormat((unsigned char *)formated, (unsigned char *)encoded);
         memset(encoded, 0, 256);
-
-        printf("Data: %s \n", formated);
-        for (int i = 0; i < strlen(formated); i++)
-        {
-            printf("%d ", formated[i]);
-        }
 
         packet = create_packet(formated);
         memcpy(buffer, &packet, sizeof(packet.header));                                                                                    // copy the packet to the buffer
@@ -297,9 +291,28 @@ int main(int argc, char **argv)
         printf("* UDP packet received from %s, port %d\n", inet_ntoa(cliaddr.sin_addr), ntohs(cliaddr.sin_port));
     }
     char formatedBaseHost[256];
-    ChangetoDnsNameFormat((unsigned char *)formatedBaseHost, (unsigned char *)Base_Host);
+    memset(data, 0, 256);
+    memset(encoded, 0, 256);
+    strcat(data, "Finished");
+    base32_encode((unsigned char *)data, strlen(data), (unsigned char *)encoded);
+    for (int i = 0; i < strlen(encoded); i++)
+    {
+        if (encoded[i] != '=' && (encoded[i] < 'A' || encoded[i] > 'Z') && (encoded[i] < '2' || encoded[i] > '7'))
+        {
+            encoded[i] = '\0';
+        }
+    }
+    memset(data, 0, 256);
+    // printf("Data encoded: %s \n", encoded);
+    strcat(encoded, ".");
+    // printf("Data encoded + dot: %s \n", encoded);
+    // printf("Lenghth encoded: %li \n", strlen(encoded));
+    strcat(encoded, Base_Host);
+    printf("Data encoded + basehost: %s \n", encoded);
+    ChangetoDnsNameFormat((unsigned char *)formated, (unsigned char *)encoded);
+    memset(encoded, 0, 256);
 
-    packet = create_custom_packet(formatedBaseHost , 20);
+    packet = create_custom_packet(formated, 20);
     memcpy(buffer, &packet, sizeof(packet.header));                                                                                    // copy the packet to the buffer
     memcpy(buffer + sizeof(packet.header), packet.question.qname, strlen(packet.question.qname) + 1);                                  // copy the question to the buffer
     memcpy(buffer + sizeof(packet.header) + strlen(packet.question.qname) + 1, &packet.question.qdaco, sizeof(packet.question.qdaco)); // copy the question to the buffer

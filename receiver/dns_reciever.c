@@ -8,6 +8,7 @@
 #include <sys/time.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
+#include <sys/stat.h>
 #include "dns_receiver_events.h"
 #include "../base32.h"
 #include "../base32.c"
@@ -91,6 +92,15 @@ int main(int argc, char **argv)
         printf("Base_Host: %s \n Dirpath: %s \n", Base_Host, DST_Dirpath);
     }
 
+    struct stat st = {0};
+    if (stat(DST_Dirpath, &st) == -1)
+    {
+        mkdir(DST_Dirpath, 0777);
+    }
+
+    char dirPath[256] = {0};
+    strcat(dirPath, DST_Dirpath);
+
     // Change Base_Host to DNS format
     char dnsFormat[strlen(Base_Host) + 1];
     ChangetoDnsNameFormat((unsigned char *)dnsFormat, (unsigned char *)Base_Host);
@@ -123,85 +133,106 @@ int main(int argc, char **argv)
 
     char decoded[1024];
     char data[1024];
+    char finalPath[1024] = {0};
+    char hostID[256] = {0};
+    char basehostFormated[256] = {0};
     int sizeofpacket;
+    int msgSize = 0;
     int size;
+    int sizeID;
     packet p;
     FILE *fp = NULL;
+    ChangetoDnsNameFormat((unsigned char *)basehostFormated, (unsigned char *)Base_Host);
 
     while ((n = recvfrom(sockfd, buffer, BUFFER, 0, (struct sockaddr *)&cliaddr, &length)) >= 0)
     {
         printf("data received from %s, port %d\n", inet_ntoa(servaddr.sin_addr), ntohs(servaddr.sin_port));
         p = create_response(dnsFormat, buffer);
-        if (ntohs(p.header.id) == 10)
+        size = buffer[12];
+        printf("buffer size: %d \n", strlen(&(buffer)));
+        printf("size: %d \n", size);
+        sizeID = size + 13;
+        printf("sizeID: %d \n", sizeID);
+        strcpy(hostID, &(buffer[sizeID]));
+
+        if (strcmp(hostID, basehostFormated) == 0)
         {
-            size = buffer[12];
-            memcpy(data, &(buffer[13]), size);
-            data[size] = '\0';
-            printf("DATA: %s\n", data);
-            base32_decode((unsigned char *)data, (unsigned char *)decoded);
-            printf("Decoded: %s\n", decoded);
-            memcpy(DST_Filepath, &(decoded), strlen(decoded));
-            printf("Filepath: %s\n", DST_Filepath);
-            
-            memset(decoded, 0, 1024);
-            memset(data, 0, 1024);
-            fp = fopen(DST_Filepath, "w");
-            if (fp == NULL)
+            if (ntohs(p.header.id) == 10)
             {
-                printf("Error opening file \n");
-                return 1;
+                memcpy(data, &(buffer[13]), size);
+                data[size] = '\0';
+                printf("DATA: %s\n", data);
+                base32_decode((unsigned char *)data, (unsigned char *)decoded);
+                printf("Decoded: %s\n", decoded);
+                memcpy(DST_Filepath, &(decoded), strlen(decoded));
+                strcat(finalPath, dirPath);
+                strcat(finalPath, "/");
+                strcat(finalPath, DST_Filepath);
+
+                memset(decoded, 0, 1024);
+                memset(data, 0, 1024);
+                fp = fopen(finalPath, "w");
+                if (fp == NULL)
+                {
+                    printf("Error opening file \n");
+                    return 1;
+                }
+                memset(finalPath, 0, 1024);
+
+                memcpy(respond, &p, sizeof(p.header));                                                                          // copy the packet to the buffer
+                memcpy(respond + sizeof(p.header), p.question.qname, strlen(p.question.qname) + 1);                             // copy the question to the buffer
+                memcpy(respond + sizeof(p.header) + strlen(p.question.qname) + 1, &p.question.qdaco, sizeof(p.question.qdaco)); // copy the question to the buffer
+                sizeofpacket = sizeof(p.header) + strlen(p.question.qname) + 1 + sizeof(p.question.qdaco);                      // calculate the size of the packet
+
+                r = sendto(sockfd, respond, sizeofpacket, 0, (struct sockaddr *)&cliaddr, length); // send the answer
+
+                printf("data \"%.*s\" sent to %s, port %d\n", r - 1, buffer, inet_ntoa(cliaddr.sin_addr), ntohs(cliaddr.sin_port));
+                continue;
             }
-            
-            
-            memcpy(respond, &p, sizeof(p.header));                                                                          // copy the packet to the buffer
-            memcpy(respond + sizeof(p.header), p.question.qname, strlen(p.question.qname) + 1);                             // copy the question to the buffer
-            memcpy(respond + sizeof(p.header) + strlen(p.question.qname) + 1, &p.question.qdaco, sizeof(p.question.qdaco)); // copy the question to the buffer
-            sizeofpacket = sizeof(p.header) + strlen(p.question.qname) + 1 + sizeof(p.question.qdaco);                      // calculate the size of the packet
+            else if (ntohs(p.header.id) == 20)
+            {
+                fclose(fp);
+                memcpy(respond, &p, sizeof(p.header));                                                                          // copy the packet to the buffer
+                memcpy(respond + sizeof(p.header), p.question.qname, strlen(p.question.qname) + 1);                             // copy the question to the buffer
+                memcpy(respond + sizeof(p.header) + strlen(p.question.qname) + 1, &p.question.qdaco, sizeof(p.question.qdaco)); // copy the question to the buffer
+                sizeofpacket = sizeof(p.header) + strlen(p.question.qname) + 1 + sizeof(p.question.qdaco);                      // calculate the size of the packet
 
-            r = sendto(sockfd, respond, sizeofpacket, 0, (struct sockaddr *)&cliaddr, length); // send the answer
+                r = sendto(sockfd, respond, sizeofpacket, 0, (struct sockaddr *)&cliaddr, length); // send the answer
 
-            printf("data \"%.*s\" sent to %s, port %d\n", r - 1, buffer, inet_ntoa(cliaddr.sin_addr), ntohs(cliaddr.sin_port));
-            continue;
-        }
-        else if (ntohs(p.header.id) == 20)
-        {
-            fclose(fp);
-            memcpy(respond, &p, sizeof(p.header));                                                                          // copy the packet to the buffer
-            memcpy(respond + sizeof(p.header), p.question.qname, strlen(p.question.qname) + 1);                             // copy the question to the buffer
-            memcpy(respond + sizeof(p.header) + strlen(p.question.qname) + 1, &p.question.qdaco, sizeof(p.question.qdaco)); // copy the question to the buffer
-            sizeofpacket = sizeof(p.header) + strlen(p.question.qname) + 1 + sizeof(p.question.qdaco);                      // calculate the size of the packet
+                printf("data \"%.*s\" sent to %s, port %d\n", r - 1, buffer, inet_ntoa(cliaddr.sin_addr), ntohs(cliaddr.sin_port));
+                continue;
+            }
+            else
+            {
+                memcpy(data, &(buffer[13]), size);
+                data[size] = '\0';
+                printf("DATA: %s\n", data);
+                msgSize = base32_decode((unsigned char *)data, (unsigned char *)decoded);
+                printf("Decoded: %s\n", decoded);
+                printf("Decoded len: %d\n", strlen(decoded));
 
-            r = sendto(sockfd, respond, sizeofpacket, 0, (struct sockaddr *)&cliaddr, length); // send the answer
+                //fputs(decoded, fp);
+                fwrite(decoded, 1, msgSize, fp);
 
-            printf("data \"%.*s\" sent to %s, port %d\n", r - 1, buffer, inet_ntoa(cliaddr.sin_addr), ntohs(cliaddr.sin_port));
-            continue;
+                memset(decoded, 0, 1024);
+                memset(data, 0, 1024);
+
+                memcpy(respond, &p, sizeof(p.header));                                                                          // copy the packet to the buffer
+                memcpy(respond + sizeof(p.header), p.question.qname, strlen(p.question.qname) + 1);                             // copy the question to the buffer
+                memcpy(respond + sizeof(p.header) + strlen(p.question.qname) + 1, &p.question.qdaco, sizeof(p.question.qdaco)); // copy the question to the buffer
+                sizeofpacket = sizeof(p.header) + strlen(p.question.qname) + 1 + sizeof(p.question.qdaco);                      // calculate the size of the packet
+
+                r = sendto(sockfd, respond, sizeofpacket, 0, (struct sockaddr *)&cliaddr, length); // send the answer
+
+                printf("data \"%.*s\" sent to %s, port %d\n", r - 1, buffer, inet_ntoa(cliaddr.sin_addr), ntohs(cliaddr.sin_port));
+                continue;
+            }
         }
         else
         {
-            size = buffer[12];
-            memcpy(data, &(buffer[13]), size);
-            data[size] = '\0';
-            printf("DATA: %s\n", data);
-            base32_decode((unsigned char *)data, (unsigned char *)decoded);
-            printf("Decoded: %s\n", decoded);
-            printf("Decoded len: %d\n", strlen(decoded));
-
-            fputs(decoded, fp);
-
-            memset(decoded, 0, 1024);
-            memset(data, 0, 1024);
-
-            memcpy(respond, &p, sizeof(p.header));                                                                          // copy the packet to the buffer
-            memcpy(respond + sizeof(p.header), p.question.qname, strlen(p.question.qname) + 1);                             // copy the question to the buffer
-            memcpy(respond + sizeof(p.header) + strlen(p.question.qname) + 1, &p.question.qdaco, sizeof(p.question.qdaco)); // copy the question to the buffer
-            sizeofpacket = sizeof(p.header) + strlen(p.question.qname) + 1 + sizeof(p.question.qdaco);                      // calculate the size of the packet
-
-            r = sendto(sockfd, respond, sizeofpacket, 0, (struct sockaddr *)&cliaddr, length); // send the answer
-
-            printf("data \"%.*s\" sent to %s, port %d\n", r - 1, buffer, inet_ntoa(cliaddr.sin_addr), ntohs(cliaddr.sin_port));
+            printf("Host ID is incorrect %s\n", hostID);
             continue;
         }
-
     }
 
     return 0;

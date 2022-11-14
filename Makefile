@@ -4,8 +4,8 @@ BIN=sender
 BIN2=reciever
 SOURCE=dns_sender.c
 SOURCE2=dns_reciever.c
-PARAMS=-u 127.0.0.1 example.com data.txt ./data.txt 
-PARAMS2=example.com /desktop
+PARAMS=-u 127.0.0.1 www.example.com data.txt ./banana.jpg
+PARAMS2=www.example.com ./data
 
 all:
 	cd sender && $(CC) $(CFLAGS) -o $(BIN) $(SOURCE)
