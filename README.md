@@ -1,2 +1,2 @@
 # ISA
-VUT ISA project
+VUT ISA project - DNS Tunel
